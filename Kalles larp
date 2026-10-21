@@ -1,0 +1,84 @@
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+
+local BASE_URL = "https://githubusercontent.com"
+local FILE_PREFIX = "Black%20Starry%20Night"
+local directions = {"bk", "dn", "ft", "lf", "rt", "up"}
+
+-- Direct compatibility check for PC Executor Asset Systems
+local customAssetFunc = getcustomasset or (getgenv and getgenv().getcustomasset)
+if not customAssetFunc then
+    error("Your PC Executor does not support getcustomasset!")
+end
+
+-- Step 1: Force build local texture storage cache in your PC Workspace folder
+if not isfolder("StarrySkyCache") then
+    makefolder("StarrySkyCache")
+end
+
+for _, dir in ipairs(directions) do
+    local localPath = "StarrySkyCache/sky_" .. dir .. ".png"
+    if not isfile(localPath) then
+        local fullUrl = BASE_URL .. FILE_PREFIX .. "_" .. dir .. ".png"
+        pcall(function()
+            local assetData = game:HttpGet(fullUrl)
+            if assetData and #assetData > 0 then
+                writefile(localPath, assetData)
+            end
+        end)
+    end
+end
+
+-- Step 2: Global application function that maps out the entire game instance
+local function mapTextureOverride(skyInstance)
+    if not skyInstance or not skyInstance:IsA("Sky") then return end
+    if skyInstance.Name == "DynamicStarrySky" then return end
+    
+    -- Strip original assets and lock yours onto the instance
+    pcall(function()
+        -- PC executors require clean paths generated through the customAssetFunc mapping
+        skyInstance.SkyboxBk = customAssetFunc("StarrySkyCache/sky_bk.png")
+        skyInstance.SkyboxDn = customAssetFunc("StarrySkyCache/sky_dn.png")
+        skyInstance.SkyboxFt = customAssetFunc("StarrySkyCache/sky_ft.png")
+        skyInstance.SkyboxLf = customAssetFunc("StarrySkyCache/sky_lf.png")
+        skyInstance.SkyboxRt = customAssetFunc("StarrySkyCache/sky_rt.png")
+        skyInstance.SkyboxUp = customAssetFunc("StarrySkyCache/sky_up.png")
+        skyInstance.Name = "DynamicStarrySky"
+        skyInstance.CelestialBodiesShown = true
+    end)
+end
+
+-- Force scan and clear original game environments 
+local function scanAllEnvironments()
+    -- Scan standard Lighting directory
+    for _, obj in ipairs(Lighting:GetDescendants()) do
+        if obj:IsA("Sky") then mapTextureOverride(obj) end
+    end
+    
+    -- Scan hidden Workspace map loading nodes used by Rivals
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Sky") then mapTextureOverride(obj) end
+    end
+end
+
+-- Step 3: Run aggressive parallel loops to intercept loading screens
+task.spawn(function()
+    while true do
+        scanAllEnvironments()
+        -- Fires fast enough to hijack a loading match before your PC spawns character models
+        task.wait(0.2)
+    end
+end)
+
+-- Extra listener trigger for heavy instance drops when the arena loads
+Workspace.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("Sky") then
+        mapTextureOverride(descendant)
+    end
+end)
+
+Lighting.ChildAdded:Connect(function(child)
+    if child:IsA("Sky") then
+        mapTextureOverride(child)
+    end
+end)
